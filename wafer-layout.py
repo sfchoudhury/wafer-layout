@@ -58,7 +58,7 @@ def generate_positions(dx, dy, width, height, spacing, effective_radius):
     return positions, buffers
 
 def calculate_optimal_offset(width, height, spacing, effective_radius, step_size=1):
-    """Find optimal grid offset considering buffer balance"""
+    """Find optimal grid offset ensuring no row has a single die"""
     period_x = width + spacing
     period_y = height + spacing
     best_score = -np.inf
@@ -69,12 +69,21 @@ def calculate_optimal_offset(width, height, spacing, effective_radius, step_size
             positions, buffers = generate_positions(dx, dy, width, height, spacing, effective_radius)
             if not positions:
                 continue
-                
+
+            # Group dies by row (same y-coordinates)
+            row_counts = {}
+            for x, y in positions:
+                row_counts.setdefault(y, []).append(x)
+
+            # Ensure no row has a single die
+            if any(len(x_values) == 1 for x_values in row_counts.values()):
+                continue  # Skip configurations with 1-die rows
+
             count = len(positions)
             buffer_values = list(buffers.values())
-            balance_score = 1 - (max(buffer_values) - min(buffer_values))/effective_radius
+            balance_score = 1 - (max(buffer_values) - min(buffer_values)) / effective_radius
             total_score = count * (1 + balance_score**2)
-            
+
             if total_score > best_score:
                 best_score = total_score
                 best_config = {
@@ -87,9 +96,30 @@ def calculate_optimal_offset(width, height, spacing, effective_radius, step_size
 
     return best_config
 
+def generate_symmetric_positions(width, height, spacing, effective_radius):
+    """Generate a symmetric die distribution ensuring optimal placement within the boundary"""
+    period_x = width + spacing
+    period_y = height + spacing
+    positions = []
+    
+    # Generate positions symmetrically around the center
+    i_max = math.floor(effective_radius / period_x)
+    j_max = math.floor(effective_radius / period_y)
+
+    for i in range(-i_max, i_max + 1):
+        x = i * period_x
+        for j in range(-j_max, j_max + 1):
+            y = j * period_y
+            # Ensure the die remains within the wafer's effective area
+            if (x**2 + y**2) <= (effective_radius - width/2)**2:
+                positions.append((x, y))
+    
+    return positions
+
+
 if generate_btn:
     try:
-        effective_radius = 150 - edge_exclusion * 1
+        effective_radius = 150 - edge_exclusion * 1.10
         if effective_radius <= 0:
             st.error("Edge exclusion exceeds wafer radius")
             st.stop()
@@ -101,17 +131,19 @@ if generate_btn:
         # Calculate configurations
         optimized = calculate_optimal_offset(width, height, spacing, effective_radius)
         centered_pos, _ = generate_positions(0, 0, width, height, spacing, effective_radius)
+        symmetric_pos = generate_symmetric_positions(width, height, spacing, effective_radius)
 
-        # Create figure
-        fig = Figure(figsize=(100, 80), dpi=200)
-        ax1 = fig.add_subplot(121)
-        ax2 = fig.add_subplot(122)
-        
+        # Create figure with 3 subplots
+        fig = Figure(figsize=(120, 80), dpi=200)
+        ax1 = fig.add_subplot(131)
+        ax2 = fig.add_subplot(132)
+        ax3 = fig.add_subplot(133)
+
         # Styling parameters
         plot_params = {
             'edgecolor': 'black',
             'facecolor': 'lightblue',
-            'linewidth': 3,
+            'linewidth': 5,
             'alpha': 0.9
         }
 
@@ -125,39 +157,35 @@ if generate_btn:
         edge_exclusion_style = {
             'edgecolor': 'darkgreen',
             'facecolor': 'none',
-            'linewidth': 1.8,
+            'linewidth': 3,
             'linestyle': '--'
         }
 
         # Common plot settings
-        for ax in (ax1, ax2):
+        for ax in (ax1, ax2, ax3):
             ax.set_aspect('equal')
             ax.add_patch(Circle((0, 0), 150, **wafer_style))
             ax.add_patch(Circle((0, 0), effective_radius, **edge_exclusion_style))
             ax.set_xlim(-160, 160)
             ax.set_ylim(-160, 160)
             ax.grid(True, color='gray', alpha=0.3)
-            #ax.set_xlabel("X Position (mm)", fontsize=100)
-            #ax.set_ylabel("Y Position (mm)", fontsize=100)
-            # Set the fontsize for both x and y tick labels
             ax.tick_params(axis='both', labelsize=50)
+            ax.set_facecolor('grey')
 
-        # Plot optimized grid
-        ax1.set_title(f"Optimized Layout: {optimized['count']} Modules\n",fontsize=100)
+        # Plot optimized grid (avoiding single-die rows)
+        ax1.set_title(f"Optimized Layout: {optimized['count']} Modules\n", fontsize=100)
         for x, y in optimized['positions']:
             ax1.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
-
-        # Add buffer annotations
-        #buffer_info = "\n".join([f"{k.title()} buffer: {v:.1f}mm" 
-                               #for k, v in optimized['buffers'].items()])
-        #ax1.text(0.98, 0.15, buffer_info, transform=ax1.transAxes,
-                #verticalalignment='top', horizontalalignment='right',
-                #bbox=dict(facecolor='white', alpha=0.9), fontsize=9)
 
         # Plot centered grid
         ax2.set_title(f"Centered Layout: {len(centered_pos)} Modules\n", fontsize=100)
         for x, y in centered_pos:
             ax2.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
+
+        # Plot symmetric optimized grid
+        ax3.set_title(f"Symmetric Layout: {len(symmetric_pos)} Modules\n", fontsize=100)
+        for x, y in symmetric_pos:
+            ax3.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
 
         st.pyplot(fig)
 
