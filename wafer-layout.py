@@ -4,7 +4,17 @@ import streamlit as st
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle, Circle
 
-st.title("Wafer Layout Planner")
+
+
+st.set_page_config(
+    page_title="Wafer Layout Planner App",
+    page_icon="🧊",
+    layout="wide",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'About': "App to configure the wafer layout to get an optimized die numbers"
+    }
+)
 
 # Input widgets in sidebar
 with st.sidebar:
@@ -93,7 +103,7 @@ if generate_btn:
         centered_pos, _ = generate_positions(0, 0, width, height, spacing, effective_radius)
 
         # Create figure
-        fig = Figure(figsize=(20, 16), dpi=200)
+        fig = Figure(figsize=(100, 80), dpi=200)
         ax1 = fig.add_subplot(121)
         ax2 = fig.add_subplot(122)
         
@@ -101,14 +111,14 @@ if generate_btn:
         plot_params = {
             'edgecolor': 'black',
             'facecolor': 'lightblue',
-            'linewidth': 0.7,
-            'alpha': 0.7
+            'linewidth': 3,
+            'alpha': 0.9
         }
 
         wafer_style = {
-            'edgecolor': 'navy',
+            'edgecolor': 'Black',
             'facecolor': 'none',
-            'linewidth': 2.5,
+            'linewidth': 10,
             'linestyle': '-'
         }
 
@@ -127,11 +137,13 @@ if generate_btn:
             ax.set_xlim(-160, 160)
             ax.set_ylim(-160, 160)
             ax.grid(True, color='gray', alpha=0.3)
-            ax.set_xlabel("X Position (mm)")
-            ax.set_ylabel("Y Position (mm)")
+            #ax.set_xlabel("X Position (mm)", fontsize=100)
+            #ax.set_ylabel("Y Position (mm)", fontsize=100)
+            # Set the fontsize for both x and y tick labels
+            ax.tick_params(axis='both', labelsize=50)
 
         # Plot optimized grid
-        ax1.set_title(f"Optimized Layout: {optimized['count']} Modules\n")
+        ax1.set_title(f"Optimized Layout: {optimized['count']} Modules\n",fontsize=100)
         for x, y in optimized['positions']:
             ax1.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
 
@@ -143,7 +155,7 @@ if generate_btn:
                 #bbox=dict(facecolor='white', alpha=0.9), fontsize=9)
 
         # Plot centered grid
-        ax2.set_title(f"Centered Layout: {len(centered_pos)} Modules\n")
+        ax2.set_title(f"Centered Layout: {len(centered_pos)} Modules\n", fontsize=100)
         for x, y in centered_pos:
             ax2.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
 
