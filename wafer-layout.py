@@ -89,7 +89,7 @@ def calculate_optimal_offset(width, height, spacing, effective_radius, step_size
 
 if generate_btn:
     try:
-        effective_radius = 150 - edge_exclusion * 1.10
+        effective_radius = 150 - edge_exclusion * 1.05
         if effective_radius <= 0:
             st.error("Edge exclusion exceeds wafer radius")
             st.stop()
