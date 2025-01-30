@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
-        'About': "App to configure the wafer layout to get an optimized die numbers"
+        'About': "App to configure the wafer layout to get an optimized die numbers - Developed by Soud F Choudhury"
     }
 )
 
@@ -96,25 +96,6 @@ def calculate_optimal_offset(width, height, spacing, effective_radius, step_size
 
     return best_config
 
-def generate_symmetric_positions(width, height, spacing, effective_radius):
-    """Generate a symmetric die distribution ensuring optimal placement within the boundary"""
-    period_x = width + spacing
-    period_y = height + spacing
-    positions = []
-    
-    # Generate positions symmetrically around the center
-    i_max = math.floor(effective_radius / period_x)
-    j_max = math.floor(effective_radius / period_y)
-
-    for i in range(-i_max, i_max + 1):
-        x = i * period_x
-        for j in range(-j_max, j_max + 1):
-            y = j * period_y
-            # Ensure the die remains within the wafer's effective area
-            if (x**2 + y**2) <= (effective_radius - width/2)**2:
-                positions.append((x, y))
-    
-    return positions
 
 
 if generate_btn:
@@ -131,13 +112,11 @@ if generate_btn:
         # Calculate configurations
         optimized = calculate_optimal_offset(width, height, spacing, effective_radius)
         centered_pos, _ = generate_positions(0, 0, width, height, spacing, effective_radius)
-        symmetric_pos = generate_symmetric_positions(width, height, spacing, effective_radius)
 
         # Create figure with 3 subplots
         fig = Figure(figsize=(120, 80), dpi=200)
         ax1 = fig.add_subplot(131)
         ax2 = fig.add_subplot(132)
-        ax3 = fig.add_subplot(133)
 
         # Styling parameters
         plot_params = {
@@ -162,7 +141,7 @@ if generate_btn:
         }
 
         # Common plot settings
-        for ax in (ax1, ax2, ax3):
+        for ax in (ax1, ax2):
             ax.set_aspect('equal')
             ax.add_patch(Circle((0, 0), 150, **wafer_style))
             ax.add_patch(Circle((0, 0), effective_radius, **edge_exclusion_style))
@@ -182,10 +161,7 @@ if generate_btn:
         for x, y in centered_pos:
             ax2.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
 
-        # Plot symmetric optimized grid
-        ax3.set_title(f"Symmetric Layout: {len(symmetric_pos)} Modules\n", fontsize=100)
-        for x, y in symmetric_pos:
-            ax3.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
+        
 
         st.pyplot(fig)
 
