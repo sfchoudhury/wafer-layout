@@ -2,168 +2,259 @@ import math
 import numpy as np
 import streamlit as st
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle, Circle
-
-
+from matplotlib.patches import Rectangle, Circle, Wedge, Polygon
 
 st.set_page_config(
-    page_title="Wafer Layout Planner App",
-    page_icon="🧊",
+    page_title="Wafer Layout Planner",
+    page_icon="⚙️",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
-        'About': "App to configure the wafer layout to get an optimized die numbers - Developed by Soud F Choudhury"
+        'About': "Wafer Layout Optimization Tool - Developed by Soud F Choudhury"
     }
 )
 
-# Input widgets in sidebar
+# =============================================
+# Input Parameters
+# =============================================
 with st.sidebar:
-    st.header("Layout Parameters")
-    width = st.number_input("Width (mm):", min_value=0.1, value=5.0)
-    height = st.number_input("Height (mm):", min_value=0.1, value=5.0)
-    spacing = st.number_input("Scribe Width (mm):", min_value=0.1, value=0.1)
-    edge_exclusion = st.number_input("Edge Exclusion (mm):", min_value=0.1, value=3.0)
-    generate_btn = st.button("Generate Layout")
+    st.header("Wafer Parameters")
+    width = st.number_input("Die Width (mm)", min_value=0.1, value=15.0)
+    height = st.number_input("Die Height (mm)", min_value=0.1, value=15.0)
+    spacing = st.number_input("Scribe Width (mm)", min_value=0.1, value=0.1)
+    edge_exclusion = st.number_input("Edge Exclusion (mm)", min_value=0.1, value=3.0)
+    generate_btn = st.button("Generate Layouts")
 
+# =============================================
+# Core Algorithm
+# =============================================
 def generate_positions(dx, dy, width, height, spacing, effective_radius):
-    """Generate positions with buffer analysis"""
+    """Generate valid die positions with precise boundary checks"""
     period_x = width + spacing
     period_y = height + spacing
     positions = []
     
-    # Calculate grid bounds
-    i_min = math.ceil((-effective_radius + width/2 - dx) / period_x)
-    i_max = math.floor((effective_radius - width/2 - dx) / period_x)
-    j_min = math.ceil((-effective_radius + height/2 - dy) / period_y)
-    j_max = math.floor((effective_radius - height/2 - dy) / period_y)
-
-    x_coords, y_coords = [], []
+    # Grid boundaries with conservative estimation
+    max_x_offset = effective_radius - width/2
+    max_y_offset = effective_radius - height/2
     
+    i_min = math.ceil((-max_x_offset - dx) / period_x)
+    i_max = math.floor((max_x_offset - dx) / period_x)
+    j_min = math.ceil((-max_y_offset - dy) / period_y)
+    j_max = math.floor((max_y_offset - dy) / period_y)
+
+    # Bottom exclusion boundary
+    exclusion_bottom = -150 + 7.5  # -142.5mm
+
     for i in range(i_min, i_max + 1):
         x = dx + i * period_x
         for j in range(j_min, j_max + 1):
             y = dy + j * period_y
-            if (abs(x) + width/2)**2 + (abs(y) + height/2)**2 <= effective_radius**2:
-                positions.append((x, y))
-                x_coords.append(x)
-                y_coords.append(y)
-    
-    # Calculate buffer distances
-    buffers = {
-        'left': effective_radius - (max(x_coords) + width/2) if x_coords else 0,
-        'right': effective_radius - (abs(min(x_coords) - width/2)) if x_coords else 0,
-        'top': effective_radius - (max(y_coords) + height/2) if y_coords else 0,
-        'bottom': effective_radius - (abs(min(y_coords) - height/2)) if y_coords else 0,
-    }
-    return positions, buffers
-
-def calculate_optimal_offset(width, height, spacing, effective_radius, step_size=1):
-    """Find optimal grid offset ensuring no row has a single die"""
-    period_x = width + spacing
-    period_y = height + spacing
-    best_score = -np.inf
-    best_config = {}
-
-    for dx in np.linspace(0, period_x, num=int(period_x/step_size)+1):
-        for dy in np.linspace(0, period_y, num=int(period_y/step_size)+1):
-            positions, buffers = generate_positions(dx, dy, width, height, spacing, effective_radius)
-            if not positions:
+            
+            # Check bottom exclusion
+            if (y - height/2) < exclusion_bottom:
                 continue
+                
+            # Verify all four corners fit in effective area
+            valid = True
+            for sx in (-1, 1):
+                for sy in (-1, 1):
+                    cx = x + sx * width/2
+                    cy = y + sy * height/2
+                    if cx**2 + cy**2 > effective_radius**2:
+                        valid = False
+                        break
+                if not valid:
+                    break
+                    
+            if valid:
+                positions.append((x, y))
+                
+    return positions
 
-            # Group dies by row (same y-coordinates)
-            row_counts = {}
-            for x, y in positions:
-                row_counts.setdefault(y, []).append(x)
+def is_symmetric(positions, tolerance=1e-6):
+    """Robust symmetry check with floating point tolerance"""
+    symmetric = True
+    for x, y in positions:
+        found_mirrors = 0
+        for px, py in positions:
+            if (math.isclose(-x, px, abs_tol=tolerance) and 
+                math.isclose(y, py, abs_tol=tolerance)):
+                found_mirrors += 1
+            if (math.isclose(x, px, abs_tol=tolerance) and 
+                math.isclose(-y, py, abs_tol=tolerance)):
+                found_mirrors += 1
+        if found_mirrors < 2:
+            symmetric = False
+            break
+    return symmetric
 
-            # Ensure no row has a single die
-            if any(len(x_values) == 1 for x_values in row_counts.values()):
-                continue  # Skip configurations with 1-die rows
+def calculate_balance(positions, effective_radius):
+    """Calculate buffer symmetry score"""
+    if not positions:
+        return 0.0
+    
+    x_vals = [x for x, _ in positions]
+    y_vals = [y for _, y in positions]
+    
+    max_x = max(x_vals, default=0)
+    min_x = min(x_vals, default=0)
+    max_y = max(y_vals, default=0)
+    min_y = min(y_vals, default=0)
+    
+    h_diff = abs(max_x + min_x)
+    v_diff = abs(max_y + min_y)
+    
+    return 1 - (h_diff + v_diff) / (2 * effective_radius)
 
-            count = len(positions)
-            buffer_values = list(buffers.values())
-            balance_score = 1 - (max(buffer_values) - min(buffer_values)) / effective_radius
-            total_score = count * (1 + balance_score**2)
+def find_optimal_layouts(width, height, spacing, effective_radius):
+    """Optimized layout search with symmetry handling"""
+    best_max = {"count": 0, "positions": [], "balance": 0}
+    best_sym = {"count": 0, "positions": [], "balance": 0}
+    
+    # Always check centered layout first
+    centered = generate_positions(0, 0, width, height, spacing, effective_radius)
+    centered_count = len(centered)
+    if centered_count > 0:
+        best_max = {
+            "count": centered_count,
+            "positions": centered,
+            "balance": calculate_balance(centered, effective_radius)
+        }
+        if is_symmetric(centered):
+            best_sym = best_max.copy()
+    
+    # Search pattern for symmetric candidates
+    step = min(width, height)/2
+    search_radius = min(effective_radius*0.8, 50)  # Limit search area
+    
+    for dx in np.linspace(0, search_radius, num=int(search_radius/step)+1):
+        for dy in np.linspace(0, search_radius, num=int(search_radius/step)+1):
+            for quadrant in [(dx, dy), (-dx, dy), (dx, -dy), (-dx, -dy)]:
+                positions = generate_positions(quadrant[0], quadrant[1], 
+                                              width, height, spacing, effective_radius)
+                count = len(positions)
+                
+                if count > best_max["count"]:
+                    best_max = {
+                        "count": count,
+                        "positions": positions,
+                        "balance": calculate_balance(positions, effective_radius)
+                    }
+                
+                if is_symmetric(positions):
+                    current_balance = calculate_balance(positions, effective_radius)
+                    if count > best_sym["count"] or \
+                      (count == best_sym["count"] and current_balance > best_sym["balance"]):
+                        best_sym = {
+                            "count": count,
+                            "positions": positions,
+                            "balance": current_balance
+                        }
+    
+    return best_max, best_sym, {
+        "count": len(centered),
+        "positions": centered,
+        "balance": calculate_balance(centered, effective_radius)
+    }
 
-            if total_score > best_score:
-                best_score = total_score
-                best_config = {
-                    'dx': dx,
-                    'dy': dy,
-                    'positions': positions,
-                    'buffers': buffers,
-                    'count': count
-                }
+# =============================================
+# Visualization
+# =============================================
+def create_wafer_plot(layout, title, width, height, effective_radius):
+    """Generate a wafer plot with dies"""
+    fig = Figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+    
+    # Wafer boundaries
+    ax.add_patch(Circle((0, 0), 150, edgecolor='black', facecolor='none', linewidth=3))
+    ax.add_patch(Circle((0, 0), effective_radius, edgecolor='red', linestyle='-', facecolor='none', linewidth=2, alpha=0.5))
+    
+    # Fill area between wafer edge and effective radius with Wedge
+    if effective_radius < 150:
+        wedge = Wedge(
+            (0, 0), 150, 0, 360, width=150 - effective_radius,
+            facecolor='red', alpha=0.3, edgecolor='none'
+        )
+        ax.add_patch(wedge)
+    
+    # Dies
+    for x, y in layout["positions"]:
+        ax.add_patch(Rectangle(
+            (x - width/2, y - height/2), width, height,
+            edgecolor='navy', facecolor='skyblue', alpha=0.7
+        ))
+    
+    # Exclusion zones
+    exclusion_bottom = -150 + 7.5  # -142.5mm
+    
+    # Calculate intersection points with wafer edge
+    try:
+        x_intersect = math.sqrt(150**2 - exclusion_bottom**2)
+    except ValueError:
+        x_intersect = 0  # Handle case where line is completely outside
+    
+    x_left = -x_intersect
+    x_right = x_intersect
+    
+    # Plot clipped exclusion line
+    ax.plot([x_left, x_right], [exclusion_bottom, exclusion_bottom], 
+           color='red', linestyle='-', linewidth=1)
+    
+    # Fill area between clipped line and wafer edge with green Polygon
+    if x_intersect > 0:
+        exclusion_polygon = Polygon(
+            [(x_left, exclusion_bottom), (x_right, exclusion_bottom), (0, -150)],
+            closed=True, facecolor='red', alpha=0.3, edgecolor='none'
+        )
+        ax.add_patch(exclusion_polygon)
+    
+    # Formatting
+    ax.set_title(f"{title}\n{layout['count']} Dies", fontsize=14, pad=15)
+    ax.set_xlim(-160, 160)
+    ax.set_ylim(-160, 160)
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.3)
+    return fig
 
-    return best_config
-
-
-
+# =============================================
+# Main Application
+# =============================================
 if generate_btn:
     try:
-        effective_radius = 150 - edge_exclusion * 1.10
+        effective_radius = 150 - edge_exclusion
         if effective_radius <= 0:
             st.error("Edge exclusion exceeds wafer radius")
             st.stop()
-
+            
         if (width/2)**2 + (height/2)**2 > effective_radius**2:
-            st.error("Rectangle too large for effective area")
+            st.error("Die too large for effective area")
             st.stop()
 
-        # Calculate configurations
-        optimized = calculate_optimal_offset(width, height, spacing, effective_radius)
-        centered_pos, _ = generate_positions(0, 0, width, height, spacing, effective_radius)
-
-        # Create figure with 3 subplots
-        fig = Figure(figsize=(120, 80), dpi=200)
-        ax1 = fig.add_subplot(131)
-        ax2 = fig.add_subplot(132)
-
-        # Styling parameters
-        plot_params = {
-            'edgecolor': 'black',
-            'facecolor': 'lightblue',
-            'linewidth': 5,
-            'alpha': 0.9
-        }
-
-        wafer_style = {
-            'edgecolor': 'Black',
-            'facecolor': 'none',
-            'linewidth': 10,
-            'linestyle': '-'
-        }
-
-        edge_exclusion_style = {
-            'edgecolor': 'darkgreen',
-            'facecolor': 'none',
-            'linewidth': 3,
-            'linestyle': '--'
-        }
-
-        # Common plot settings
-        for ax in (ax1, ax2):
-            ax.set_aspect('equal')
-            ax.add_patch(Circle((0, 0), 150, **wafer_style))
-            ax.add_patch(Circle((0, 0), effective_radius, **edge_exclusion_style))
-            ax.set_xlim(-160, 160)
-            ax.set_ylim(-160, 160)
-            ax.grid(True, color='gray', alpha=0.3)
-            ax.tick_params(axis='both', labelsize=50)
-            ax.set_facecolor('grey')
-
-        # Plot optimized grid (avoiding single-die rows)
-        ax1.set_title(f"Optimized Layout: {optimized['count']} Modules\n", fontsize=100)
-        for x, y in optimized['positions']:
-            ax1.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
-
-        # Plot centered grid
-        ax2.set_title(f"Centered Layout: {len(centered_pos)} Modules\n", fontsize=100)
-        for x, y in centered_pos:
-            ax2.add_patch(Rectangle((x - width/2, y - height/2), width, height, **plot_params))
-
+        # Calculate layouts
+        max_layout, sym_layout, centered_layout = find_optimal_layouts(
+            width, height, spacing, effective_radius
+        )
         
-
-        st.pyplot(fig)
-
+        # Display results
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.pyplot(create_wafer_plot(max_layout, "Max Count", width, height, effective_radius))
+        with col2:
+            st.pyplot(create_wafer_plot(sym_layout, "Symmetric Optimized", width, height, effective_radius))
+        with col3:
+            st.pyplot(create_wafer_plot(centered_layout, "Centered", width, height, effective_radius))
+            
+        # Comparison table
+        st.subheader("Layout Comparison")
+        comparison_data = {
+            "Layout": ["Max Count", "Symmetric", "Centered"],
+            "Die Count": [max_layout["count"], sym_layout["count"], centered_layout["count"]],
+            "Balance Score": [f"{max_layout['balance']:.1%}", 
+                             f"{sym_layout['balance']:.1%}", 
+                             f"{centered_layout['balance']:.1%}"]
+        }
+        st.dataframe(comparison_data, use_container_width=True, hide_index=True)
+        
     except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
+        st.error(f"Error: {str(e)}")
