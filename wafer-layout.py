@@ -125,7 +125,7 @@ def find_optimal_layouts(width, height, spacing, effective_radius):
             best_sym = best_max.copy()
     
     # Search pattern for symmetric candidates
-    step = min(width, height)/2
+    step = min(width, height)/50
     search_radius = min(effective_radius*0.8, 50)  # Limit search area
     
     for dx in np.linspace(0, search_radius, num=int(search_radius/step)+1):
