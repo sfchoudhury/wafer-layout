@@ -19,10 +19,10 @@ st.set_page_config(
 # =============================================
 with st.sidebar:
     st.header("Wafer Parameters")
-    width = st.number_input("Die Width (mm)", min_value=0.1, value=40.0)
-    height = st.number_input("Die Height (mm)", min_value=0.1, value=40.0)
+    width = st.number_input("Die Width (mm)", min_value=0.1, value=53.8)
+    height = st.number_input("Die Height (mm)", min_value=0.1, value=87.5)
     spacing = st.number_input("Scribe Width (mm)", min_value=0.1, value=0.1)
-    edge_exclusion = st.number_input("Edge Exclusion (mm)", min_value=3.0, value=3.0)
+    edge_exclusion = st.number_input("Edge Exclusion (mm)", min_value=0.1, value=3.0)
     generate_btn = st.button("Generate Layouts")
 
 # =============================================
@@ -73,21 +73,17 @@ def generate_positions(dx, dy, width, height, spacing, effective_radius):
     return positions
 
 def is_symmetric(positions, tolerance=1e-6):
-    """Robust symmetry check with floating point tolerance"""
-    symmetric = True
-    for x, y in positions:
-        found_mirrors = 0
-        for px, py in positions:
-            if (math.isclose(-x, px, abs_tol=tolerance) and 
-                math.isclose(y, py, abs_tol=tolerance)):
-                found_mirrors += 1
-            if (math.isclose(x, px, abs_tol=tolerance) and 
-                math.isclose(-y, py, abs_tol=tolerance)):
-                found_mirrors += 1
-        if found_mirrors < 2:
-            symmetric = False
-            break
-    return symmetric
+    """Check if positions are symmetric across both X and Y axes using set lookups."""
+    pos_set = {(round(x, 6), round(y, 6)) for x, y in positions}  # Rounded to handle floating-point precision
+    
+    for x, y in pos_set:
+        # Check Y-axis mirror
+        if (-x, y) not in pos_set:
+            return False
+        # Check X-axis mirror
+        if (x, -y) not in pos_set:
+            return False
+    return True
 
 def calculate_balance(positions, effective_radius):
     """Calculate buffer symmetry score"""
@@ -121,20 +117,19 @@ def find_optimal_layouts(width, height, spacing, effective_radius):
             "positions": centered,
             "balance": calculate_balance(centered, effective_radius)
         }
-        if is_symmetric(centered):
-            best_sym = best_max.copy()
+        #if is_symmetric(centered):
+           # best_sym = best_max.copy()
     
-    # Search pattern for symmetric candidates
-    step = min(width, height)/50
-    search_radius = min(effective_radius*0.8, 50)  # Limit search area
+
     
-    for dx in np.linspace(0, search_radius, num=int(search_radius/step)+1):
-        for dy in np.linspace(0, search_radius, num=int(search_radius/step)+1):
+    for dx in np.linspace(0, (spacing+width)/2, 10):
+        print("check:", dx)
+        for dy in np.linspace(0, (spacing+height)/2, 10):
             for quadrant in [(dx, dy), (-dx, dy), (dx, -dy), (-dx, -dy)]:
                 positions = generate_positions(quadrant[0], quadrant[1], 
                                               width, height, spacing, effective_radius)
                 count = len(positions)
-                
+                #print("type-",count)
                 if count > best_max["count"]:
                     best_max = {
                         "count": count,
@@ -142,7 +137,9 @@ def find_optimal_layouts(width, height, spacing, effective_radius):
                         "balance": calculate_balance(positions, effective_radius)
                     }
                 
+
                 if is_symmetric(positions):
+                    print("sym- ", count)
                     current_balance = calculate_balance(positions, effective_radius)
                     if count > best_sym["count"] or \
                       (count == best_sym["count"] and current_balance > best_sym["balance"]):
@@ -151,6 +148,7 @@ def find_optimal_layouts(width, height, spacing, effective_radius):
                             "positions": positions,
                             "balance": current_balance
                         }
+                       
     
     return best_max, best_sym, {
         "count": len(centered),
