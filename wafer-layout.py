@@ -19,8 +19,8 @@ st.set_page_config(
 # =============================================
 with st.sidebar:
     st.header("Wafer Parameters")
-    width = st.number_input("Die Width (mm)", min_value=0.1, value=53.8)
-    height = st.number_input("Die Height (mm)", min_value=0.1, value=87.5)
+    width = st.number_input("Die Width (mm)", min_value=0.1, value=50.0)
+    height = st.number_input("Die Height (mm)", min_value=0.1, value=50.0)
     spacing = st.number_input("Scribe Width (mm)", min_value=0.1, value=0.1)
     edge_exclusion = st.number_input("Edge Exclusion (mm)", min_value=0.1, value=3.0)
     generate_btn = st.button("Generate Layouts")
