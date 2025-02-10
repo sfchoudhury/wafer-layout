@@ -30,8 +30,8 @@ with st.sidebar:
 # =============================================
 def generate_positions(dx, dy, width, height, spacing, effective_radius):
     """Generate valid die positions with precise boundary checks"""
-    period_x = width + spacing
-    period_y = height + spacing
+    period_x = width + spacing/2
+    period_y = height + spacing/2
     positions = []
     
     # Grid boundaries with conservative estimation
