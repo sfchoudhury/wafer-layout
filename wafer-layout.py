@@ -122,9 +122,9 @@ def find_optimal_layouts(width, height, spacing, effective_radius):
     
 
     
-    for dx in np.linspace(0, (spacing+width)/2, 10):
-        print("check:", dx)
-        for dy in np.linspace(0, (spacing+height)/2, 10):
+    for dx in np.linspace(0, (spacing/2+width)/2, 10):
+        #print("check:", dx)
+        for dy in np.linspace(0, (spacing/2+height)/2, 10):
             for quadrant in [(dx, dy), (-dx, dy), (dx, -dy), (-dx, -dy)]:
                 positions = generate_positions(quadrant[0], quadrant[1], 
                                               width, height, spacing, effective_radius)
@@ -139,7 +139,7 @@ def find_optimal_layouts(width, height, spacing, effective_radius):
                 
 
                 if is_symmetric(positions):
-                    print("sym- ", count)
+                    #print("sym- ", count)
                     current_balance = calculate_balance(positions, effective_radius)
                     if count > best_sym["count"] or \
                       (count == best_sym["count"] and current_balance > best_sym["balance"]):
