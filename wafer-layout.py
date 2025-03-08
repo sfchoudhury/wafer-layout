@@ -30,8 +30,8 @@ with st.sidebar:
 # =============================================
 def generate_positions(dx, dy, width, height, spacing, effective_radius):
     """Generate valid die positions with precise boundary checks"""
-    period_x = width + spacing/2
-    period_y = height + spacing/2
+    period_x = width + spacing
+    period_y = height + spacing
     positions = []
     
     # Grid boundaries with conservative estimation
@@ -122,9 +122,9 @@ def find_optimal_layouts(width, height, spacing, effective_radius):
     
 
     
-    for dx in np.linspace(0, (spacing/2+width)/2, 10):
+    for dx in np.linspace(0, (spacing+width)/2, 10):
         #print("check:", dx)
-        for dy in np.linspace(0, (spacing/2+height)/2, 10):
+        for dy in np.linspace(0, (spacing+height)/2, 10):
             for quadrant in [(dx, dy), (-dx, dy), (dx, -dy), (-dx, -dy)]:
                 positions = generate_positions(quadrant[0], quadrant[1], 
                                               width, height, spacing, effective_radius)
